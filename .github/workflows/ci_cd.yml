@@ -11,12 +11,24 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
+    # Map branches to environments
     environment:
       name: ${{ github.ref_name == 'prod' && 'Production' || github.ref_name == 'test' && 'Test' || 'Development' }}
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+
+      - name: Determine Environment Name
+        id: envname
+        run: |
+          if [ "${GITHUB_REF_NAME}" = "prod" ]; then
+            echo "ENVNAME=Production" >> $GITHUB_ENV
+          elif [ "${GITHUB_REF_NAME}" = "test" ]; then
+            echo "ENVNAME=Test" >> $GITHUB_ENV
+          else
+            echo "ENVNAME=Development" >> $GITHUB_ENV
+          fi
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -30,13 +42,13 @@ jobs:
           source .venv/bin/activate
           uv pip install -r requirements.txt
 
-      - name: Set Environment Variable
-        run: echo "ENVIRONMENT=${{ environment.name }}" >> $GITHUB_ENV
+      - name: Set ENVIRONMENT variable
+        run: echo "ENVIRONMENT=${{ env.ENVNAME }}" >> $GITHUB_ENV
 
-      - name: Run Application in ${{ environment.name }}
+      - name: Run Application
         run: |
           source .venv/bin/activate
           python hello_world.py
 
       - name: Deployment Complete
-        run: echo "Successfully deployed to ${{ environment.name }}!"
+        run: echo "Successfully deployed to ${{ env.ENVNAME }}!"
