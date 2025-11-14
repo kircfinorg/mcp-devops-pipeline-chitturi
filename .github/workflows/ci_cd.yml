@@ -1,0 +1,42 @@
+name: Python Hello World Deploy
+
+on:
+  push:
+    branches:
+      - main
+      - test
+      - prod
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    environment:
+      name: ${{ github.ref_name == 'prod' && 'Production' || github.ref_name == 'test' && 'Test' || 'Development' }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv and Dependencies
+        run: |
+          pip install uv
+          uv venv --seed
+          source .venv/bin/activate
+          uv pip install -r requirements.txt
+
+      - name: Set Environment Variable
+        run: echo "ENVIRONMENT=${{ environment.name }}" >> $GITHUB_ENV
+
+      - name: Run Application in ${{ environment.name }}
+        run: |
+          source .venv/bin/activate
+          python hello_world.py
+
+      - name: Deployment Complete
+        run: echo "Successfully deployed to ${{ environment.name }}!"
