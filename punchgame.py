@@ -18,6 +18,13 @@ BLUE = (0, 0, 255)
 GREEN = (0, 255, 0)
 YELLOW = (255, 255, 0)
 GRAY = (128, 128, 128)
+DARK_GREEN = (0, 100, 0)
+ZOMBIE_GREEN = (100, 150, 80)
+SKIN_TONE = (255, 220, 177)
+BROWN = (139, 69, 19)
+PURPLE = (148, 0, 211)
+CYAN = (0, 255, 255)
+GOLD = (255, 215, 0)
 
 class Player:
     def __init__(self, x, y):
@@ -29,15 +36,35 @@ class Player:
         self.health = 100
         self.max_health = 100
         self.punch_cooldown = 0
-        self.punch_range = 60
+        self.base_punch_cooldown = 20
+        self.punch_range = 80  # Increased punch radius
         self.is_punching = False
         self.punch_timer = 0
         self.punch_extension = 0  # How far the fist extends
         self.hit_enemies = set()  # Track which enemies were hit in this punch
         self.punch_angle = 0  # Angle toward mouse when punch started
         
+        # Powerup effects
+        self.invincible = False
+        self.invincible_timer = 0
+        self.double_speed = False
+        self.double_speed_timer = 0
+        
     def update(self, enemies):
         keys = pygame.key.get_pressed()
+        
+        # Update powerup timers
+        if self.invincible_timer > 0:
+            self.invincible_timer -= 1
+            self.invincible = True
+        else:
+            self.invincible = False
+            
+        if self.double_speed_timer > 0:
+            self.double_speed_timer -= 1
+            self.double_speed = True
+        else:
+            self.double_speed = False
         
         # Movement
         if keys[pygame.K_LEFT] or keys[pygame.K_a]:
@@ -61,8 +88,8 @@ class Player:
         if self.punch_timer > 0:
             self.punch_timer -= 1
             self.is_punching = True
-            # Animate fist extension
-            self.punch_extension = (10 - self.punch_timer) * 4
+            # Animate fist extension (bigger range now)
+            self.punch_extension = (10 - self.punch_timer) * 6
             
             # Check for hits during the entire punch animation
             self.check_punch_hits(enemies)
@@ -73,9 +100,20 @@ class Player:
             if self.punch_timer == 0 and not self.is_punching:
                 self.hit_enemies.clear()
     
+    def take_damage(self, damage):
+        if not self.invincible:
+            self.health -= damage
+    
+    def activate_powerup(self, powerup_type):
+        if powerup_type == "speed":
+            self.double_speed_timer = 300  # 5 seconds at 60 FPS
+            self.base_punch_cooldown = 10
+        elif powerup_type == "invincible":
+            self.invincible_timer = 180  # 3 seconds at 60 FPS
+    
     def punch(self):
         if self.punch_cooldown <= 0:
-            self.punch_cooldown = 20
+            self.punch_cooldown = self.base_punch_cooldown
             self.punch_timer = 10
             self.is_punching = True
             self.hit_enemies.clear()  # Clear previous hits
@@ -109,8 +147,8 @@ class Player:
             
             distance = math.sqrt((fist_x - enemy_center_x)**2 + (fist_y - enemy_center_y)**2)
             
-            # Hit detection with fist size consideration
-            if distance < 35:  # Fist radius + some tolerance
+            # Hit detection with fist size consideration (bigger radius)
+            if distance < 50:  # Increased fist radius + tolerance
                 enemy.take_damage(25)
                 self.hit_enemies.add(id(enemy))  # Mark this enemy as hit
     
@@ -131,8 +169,38 @@ class Player:
         return new_x + cx, new_y + cy
     
     def draw(self, screen):
-        # Draw player body
-        pygame.draw.rect(screen, BLUE, (self.x, self.y, self.width, self.height))
+        # Draw human player
+        center_x = self.x + self.width // 2
+        
+        # Invincibility effect - glowing outline
+        if self.invincible:
+            pygame.draw.rect(screen, GOLD, (self.x - 3, self.y - 3, self.width + 6, self.height + 6), 3)
+        
+        # Double speed effect - cyan outline
+        if self.double_speed:
+            pygame.draw.rect(screen, CYAN, (self.x - 2, self.y - 2, self.width + 4, self.height + 4), 2)
+        
+        # Legs
+        pygame.draw.rect(screen, BLUE, (self.x + 5, self.y + 50, 15, 30))  # Left leg
+        pygame.draw.rect(screen, BLUE, (self.x + 30, self.y + 50, 15, 30))  # Right leg
+        
+        # Body (torso)
+        pygame.draw.rect(screen, RED, (self.x + 10, self.y + 25, 30, 30))
+        
+        # Head
+        pygame.draw.circle(screen, SKIN_TONE, (center_x, self.y + 15), 15)
+        
+        # Eyes
+        pygame.draw.circle(screen, BLACK, (center_x - 5, self.y + 12), 3)
+        pygame.draw.circle(screen, BLACK, (center_x + 5, self.y + 12), 3)
+        
+        # Mouth
+        pygame.draw.arc(screen, BLACK, (center_x - 6, self.y + 15, 12, 8), 3.14, 6.28, 2)
+        
+        # Arms (when not punching)
+        if not self.is_punching:
+            pygame.draw.rect(screen, SKIN_TONE, (self.x, self.y + 30, 10, 20))  # Left arm
+            pygame.draw.rect(screen, SKIN_TONE, (self.x + 40, self.y + 30, 10, 20))  # Right arm
         
         # Draw punch effect - human fist
         if self.is_punching:
@@ -144,7 +212,6 @@ class Player:
             fist_y = player_center_y + math.sin(self.punch_angle) * self.punch_extension
             
             # Skin tone color
-            SKIN_TONE = (255, 220, 177)
             SKIN_SHADOW = (220, 180, 140)
             
             # Draw arm extending from player to fist
@@ -242,7 +309,7 @@ class Enemy:
         
         # Attack player if close
         if distance < 40 and self.attack_cooldown <= 0:
-            player.health -= 10
+            player.take_damage(10)
             self.attack_cooldown = 60
             
         if self.attack_cooldown > 0:
@@ -256,9 +323,32 @@ class Enemy:
     def draw(self, screen):
         if not self.alive:
             return
-            
-        # Draw enemy body
-        pygame.draw.rect(screen, RED, (self.x, self.y, self.width, self.height))
+        
+        center_x = self.x + self.width // 2
+        
+        # Draw zombie
+        # Legs (torn pants)
+        pygame.draw.rect(screen, GRAY, (self.x + 5, self.y + 40, 12, 20))  # Left leg
+        pygame.draw.rect(screen, GRAY, (self.x + 23, self.y + 40, 12, 20))  # Right leg
+        
+        # Body (torn shirt)
+        pygame.draw.rect(screen, DARK_GREEN, (self.x + 8, self.y + 20, 24, 22))
+        
+        # Head (zombie green)
+        pygame.draw.circle(screen, ZOMBIE_GREEN, (center_x, self.y + 12), 12)
+        
+        # Eyes (dead/white)
+        pygame.draw.circle(screen, WHITE, (center_x - 4, self.y + 10), 3)
+        pygame.draw.circle(screen, WHITE, (center_x + 4, self.y + 10), 3)
+        pygame.draw.circle(screen, BLACK, (center_x - 4, self.y + 10), 1)
+        pygame.draw.circle(screen, BLACK, (center_x + 4, self.y + 10), 1)
+        
+        # Mouth (open/groaning)
+        pygame.draw.ellipse(screen, BLACK, (center_x - 4, self.y + 14, 8, 6))
+        
+        # Arms (reaching out)
+        pygame.draw.rect(screen, ZOMBIE_GREEN, (self.x - 2, self.y + 22, 8, 15))  # Left arm
+        pygame.draw.rect(screen, ZOMBIE_GREEN, (self.x + 34, self.y + 22, 8, 15))  # Right arm
         
         # Draw health bar
         bar_width = 50
@@ -267,16 +357,72 @@ class Enemy:
         pygame.draw.rect(screen, BLACK, (self.x - 5, self.y - 12, bar_width, bar_height))
         pygame.draw.rect(screen, GREEN, (self.x - 5, self.y - 12, bar_width * health_ratio, bar_height))
 
+class Powerup:
+    def __init__(self, x, y, powerup_type):
+        self.x = x
+        self.y = y
+        self.width = 30
+        self.height = 30
+        self.type = powerup_type  # "speed" or "invincible"
+        self.collected = False
+        
+    def check_collision(self, player):
+        """Check if player collects this powerup"""
+        if self.collected:
+            return False
+            
+        player_center_x = player.x + player.width // 2
+        player_center_y = player.y + player.height // 2
+        powerup_center_x = self.x + self.width // 2
+        powerup_center_y = self.y + self.height // 2
+        
+        distance = math.sqrt((player_center_x - powerup_center_x)**2 + 
+                           (player_center_y - powerup_center_y)**2)
+        
+        if distance < 40:
+            self.collected = True
+            return True
+        return False
+    
+    def draw(self, screen):
+        if self.collected:
+            return
+            
+        if self.type == "speed":
+            # Draw speed powerup (lightning bolt)
+            pygame.draw.rect(screen, CYAN, (self.x, self.y, self.width, self.height))
+            pygame.draw.polygon(screen, YELLOW, [
+                (self.x + 15, self.y + 5),
+                (self.x + 10, self.y + 15),
+                (self.x + 18, self.y + 15),
+                (self.x + 12, self.y + 25)
+            ])
+            # Label
+            font = pygame.font.Font(None, 16)
+            text = font.render("2X", True, BLACK)
+            screen.blit(text, (self.x + 8, self.y + 2))
+            
+        elif self.type == "invincible":
+            # Draw invincibility powerup (shield)
+            pygame.draw.rect(screen, PURPLE, (self.x, self.y, self.width, self.height))
+            pygame.draw.circle(screen, GOLD, (self.x + 15, self.y + 15), 12, 3)
+            # Label
+            font = pygame.font.Font(None, 16)
+            text = font.render("INV", True, WHITE)
+            screen.blit(text, (self.x + 5, self.y + 10))
+
 class Game:
     def __init__(self):
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-        pygame.display.set_caption("2D Punching Game")
+        pygame.display.set_caption("Zombie Puncher")
         self.clock = pygame.time.Clock()
         self.running = True
         
         self.player = Player(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
         self.enemies = []
+        self.powerups = []
         self.spawn_timer = 0
+        self.powerup_spawn_timer = 0
         self.score = 0
         self.font = pygame.font.Font(None, 36)
         
@@ -306,6 +452,13 @@ class Game:
                 if event.key == pygame.K_SPACE:
                     self.player.punch()
     
+    def spawn_powerup(self):
+        """Spawn a random powerup at a random location"""
+        x = random.randint(50, SCREEN_WIDTH - 80)
+        y = random.randint(50, SCREEN_HEIGHT - 80)
+        powerup_type = random.choice(["speed", "invincible"])
+        self.powerups.append(Powerup(x, y, powerup_type))
+    
     def update(self):
         self.player.update(self.enemies)
         
@@ -316,11 +469,23 @@ class Game:
                 self.enemies.remove(enemy)
                 self.score += 10
         
+        # Check powerup collection
+        for powerup in self.powerups[:]:
+            if powerup.check_collision(self.player):
+                self.player.activate_powerup(powerup.type)
+                self.powerups.remove(powerup)
+        
         # Spawn new enemies
         self.spawn_timer += 1
         if self.spawn_timer >= 120:  # Spawn every 2 seconds
             self.spawn_enemy()
             self.spawn_timer = 0
+        
+        # Spawn powerups
+        self.powerup_spawn_timer += 1
+        if self.powerup_spawn_timer >= 600:  # Spawn every 10 seconds
+            self.spawn_powerup()
+            self.powerup_spawn_timer = 0
         
         # Check game over
         if self.player.health <= 0:
@@ -330,7 +495,11 @@ class Game:
         self.screen.fill(WHITE)
         
         # Draw game objects
+        for powerup in self.powerups:
+            powerup.draw(self.screen)
+        
         self.player.draw(self.screen)
+        
         for enemy in self.enemies:
             enemy.draw(self.screen)
         
@@ -341,16 +510,26 @@ class Game:
         health_text = self.font.render(f"Health: {self.player.health}", True, BLACK)
         self.screen.blit(health_text, (10, 50))
         
+        # Draw active powerup indicators
+        small_font = pygame.font.Font(None, 24)
+        if self.player.invincible:
+            inv_text = small_font.render(f"INVINCIBLE: {self.player.invincible_timer // 60}s", True, GOLD)
+            self.screen.blit(inv_text, (10, 90))
+        
+        if self.player.double_speed:
+            speed_text = small_font.render(f"DOUBLE SPEED: {self.player.double_speed_timer // 60}s", True, CYAN)
+            self.screen.blit(speed_text, (10, 115))
+        
         # Draw instructions
         instruction_font = pygame.font.Font(None, 24)
         instructions = [
             "WASD/Arrow Keys: Move",
-            "SPACE: Punch",
-            "Survive as long as possible!"
+            "SPACE: Punch (aim with mouse)",
+            "Collect powerups!"
         ]
         for i, instruction in enumerate(instructions):
             text = instruction_font.render(instruction, True, GRAY)
-            self.screen.blit(text, (SCREEN_WIDTH - 250, 10 + i * 25))
+            self.screen.blit(text, (SCREEN_WIDTH - 280, 10 + i * 25))
         
         pygame.display.flip()
     
